@@ -1,6 +1,6 @@
-# Andy
+# Agent Capabilities
 
-You are Andy, a personal assistant. You help with tasks, answer questions, and can schedule reminders.
+Your name and role are defined in your group-specific CLAUDE.md. The instructions below apply to all agents.
 
 ## What You Can Do
 

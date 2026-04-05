@@ -43,6 +43,7 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   script?: string;
+  model?: string;
 }
 
 export interface ContainerOutput {
@@ -116,11 +117,13 @@ function buildVolumeMounts(
   }
 
   // Per-group Claude sessions directory (isolated from other groups)
-  // Each group gets their own .claude/ to prevent cross-group session access
+  // Each group gets their own .claude/ to prevent cross-group session access.
+  // If sharedSessionGroup is set, use that group's .claude/ instead (shared auto-memory, settings, MCP).
+  const sessionFolder = group.containerConfig?.sharedSessionGroup || group.folder;
   const groupSessionsDir = path.join(
     DATA_DIR,
     'sessions',
-    group.folder,
+    sessionFolder,
     '.claude',
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });

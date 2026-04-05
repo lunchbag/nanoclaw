@@ -30,6 +30,8 @@ export interface AllowedRoot {
 export interface ContainerConfig {
   additionalMounts?: AdditionalMount[];
   timeout?: number; // Default: 300000 (5 minutes)
+  model?: string; // Claude model to use (e.g., "claude-opus-4-6", "claude-sonnet-4-6")
+  sharedSessionGroup?: string; // Share .claude/ (auto-memory, settings, MCP) with another group's folder name
 }
 
 export interface RegisteredGroup {

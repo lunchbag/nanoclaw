@@ -180,6 +180,7 @@ async function runTask(
         isMain,
         isScheduledTask: true,
         assistantName: ASSISTANT_NAME,
+        model: group?.containerConfig?.model,
         script: task.script || undefined,
       },
       (proc, containerName) =>
