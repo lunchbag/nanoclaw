@@ -4,6 +4,7 @@
  */
 import { ChildProcess, spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import {
@@ -119,7 +120,8 @@ function buildVolumeMounts(
   // Per-group Claude sessions directory (isolated from other groups)
   // Each group gets their own .claude/ to prevent cross-group session access.
   // If sharedSessionGroup is set, use that group's .claude/ instead (shared auto-memory, settings, MCP).
-  const sessionFolder = group.containerConfig?.sharedSessionGroup || group.folder;
+  const sessionFolder =
+    group.containerConfig?.sharedSessionGroup || group.folder;
   const groupSessionsDir = path.join(
     DATA_DIR,
     'sessions',
@@ -167,6 +169,17 @@ function buildVolumeMounts(
     containerPath: '/home/node/.claude',
     readonly: false,
   });
+
+  // Mount Google Workspace CLI credentials (read-only, shared across all groups)
+  const homeDir = process.env.HOME || os.homedir();
+  const gwsConfigDir = path.join(homeDir, '.config', 'gws');
+  if (fs.existsSync(gwsConfigDir)) {
+    mounts.push({
+      hostPath: gwsConfigDir,
+      containerPath: '/home/node/.config/gws',
+      readonly: true,
+    });
+  }
 
   // Per-group IPC namespace: each group gets its own IPC directory
   // This prevents cross-group privilege escalation via IPC
