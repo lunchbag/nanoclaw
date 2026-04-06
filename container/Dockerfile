@@ -31,7 +31,12 @@ ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Install agent-browser, claude-code, and Google Workspace CLI globally
-RUN npm install -g agent-browser @anthropic-ai/claude-code @googleworkspace/cli
+# gws postinstall downloads a glibc binary that requires GLIBC 2.39 (container has 2.36).
+# Replace it with the musl build which is statically linked.
+RUN npm install -g agent-browser @anthropic-ai/claude-code @googleworkspace/cli \
+    && GWS_DIR=$(dirname $(readlink -f $(which gws))) \
+    && curl -fsSL https://github.com/googleworkspace/cli/releases/latest/download/google-workspace-cli-x86_64-unknown-linux-musl.tar.gz \
+       | tar xz -C "$GWS_DIR" gws
 
 # Create app directory
 WORKDIR /app
