@@ -1,6 +1,14 @@
-import { Client, Events, GatewayIntentBits, Message, TextChannel } from 'discord.js';
+import {
+  Client,
+  Events,
+  GatewayIntentBits,
+  Message,
+  TextChannel,
+} from 'discord.js';
+import fs from 'fs';
+import path from 'path';
 
-import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
+import { ASSISTANT_NAME, DATA_DIR, TRIGGER_PATTERN } from '../config.js';
 import { readEnvByPrefix } from '../env.js';
 import { logger } from '../logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
@@ -105,24 +113,46 @@ export class DiscordChannel implements Channel {
           }
         }
 
-        // Handle attachments
+        // Handle attachments — download images, describe others
+        const imagePaths: string[] = [];
         if (message.attachments.size > 0) {
-          const attachmentDescriptions = [...message.attachments.values()].map((att) => {
+          const attachmentDescriptions: string[] = [];
+          for (const att of message.attachments.values()) {
             const contentType = att.contentType || '';
-            if (contentType.startsWith('image/')) {
-              return `[Image: ${att.name || 'image'}]`;
+            if (contentType.startsWith('image/') && att.url) {
+              // Download image to temp dir
+              try {
+                const imgDir = path.join(DATA_DIR, 'images');
+                fs.mkdirSync(imgDir, { recursive: true });
+                const ext = path.extname(att.name || '.png') || '.png';
+                const imgPath = path.join(imgDir, `${msgId}-${att.id}${ext}`);
+                const resp = await fetch(att.url);
+                if (resp.ok) {
+                  const buf = Buffer.from(await resp.arrayBuffer());
+                  fs.writeFileSync(imgPath, buf);
+                  imagePaths.push(imgPath);
+                  attachmentDescriptions.push(`[Image: ${att.name || 'image'}]`);
+                } else {
+                  attachmentDescriptions.push(`[Image: ${att.name || 'image'} (download failed)]`);
+                }
+              } catch (err) {
+                logger.debug({ err, att: att.name }, 'Failed to download Discord image');
+                attachmentDescriptions.push(`[Image: ${att.name || 'image'} (download failed)]`);
+              }
             } else if (contentType.startsWith('video/')) {
-              return `[Video: ${att.name || 'video'}]`;
+              attachmentDescriptions.push(`[Video: ${att.name || 'video'}]`);
             } else if (contentType.startsWith('audio/')) {
-              return `[Audio: ${att.name || 'audio'}]`;
+              attachmentDescriptions.push(`[Audio: ${att.name || 'audio'}]`);
             } else {
-              return `[File: ${att.name || 'file'}]`;
+              attachmentDescriptions.push(`[File: ${att.name || 'file'}]`);
             }
-          });
-          if (content) {
-            content = `${content}\n${attachmentDescriptions.join('\n')}`;
-          } else {
-            content = attachmentDescriptions.join('\n');
+          }
+          if (attachmentDescriptions.length > 0) {
+            if (content) {
+              content = `${content}\n${attachmentDescriptions.join('\n')}`;
+            } else {
+              content = attachmentDescriptions.join('\n');
+            }
           }
         }
 
@@ -143,7 +173,13 @@ export class DiscordChannel implements Channel {
         }
 
         const isGroup = message.guild !== null;
-        this.opts.onChatMetadata(chatJid, timestamp, chatName, 'discord', isGroup);
+        this.opts.onChatMetadata(
+          chatJid,
+          timestamp,
+          chatName,
+          'discord',
+          isGroup,
+        );
 
         const group = this.opts.registeredGroups()[chatJid];
         if (!group) {
@@ -162,6 +198,7 @@ export class DiscordChannel implements Channel {
           content,
           timestamp,
           is_from_me: false,
+          images: imagePaths.length > 0 ? imagePaths : undefined,
         });
 
         logger.info(
@@ -282,14 +319,18 @@ registerChannel('discord', (opts: ChannelOpts) => {
     seen.add(idx);
     const token = envVars[`DISCORD_BOT_TOKEN_${idx}`];
     const channelsRaw = envVars[`DISCORD_BOT_CHANNELS_${idx}`] || '';
-    const channelIds = channelsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    const channelIds = channelsRaw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (token && channelIds.length > 0) {
       botConfigs.push({ token, channelIds });
     }
   }
 
   // Legacy/default token — handles all unmapped channels
-  const defaultToken = envVars['DISCORD_BOT_TOKEN'] || process.env.DISCORD_BOT_TOKEN || '';
+  const defaultToken =
+    envVars['DISCORD_BOT_TOKEN'] || process.env.DISCORD_BOT_TOKEN || '';
   if (defaultToken) {
     botConfigs.push({ token: defaultToken, channelIds: null });
   }

@@ -57,6 +57,7 @@ export interface NewMessage {
   reply_to_message_id?: string;
   reply_to_message_content?: string;
   reply_to_sender_name?: string;
+  images?: string[]; // Absolute paths to downloaded image files
 }
 
 export interface ScheduledTask {

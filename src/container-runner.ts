@@ -45,6 +45,7 @@ export interface ContainerInput {
   assistantName?: string;
   script?: string;
   model?: string;
+  images?: string[]; // Absolute paths to image files on host
 }
 
 export interface ContainerOutput {
@@ -169,6 +170,16 @@ function buildVolumeMounts(
     containerPath: '/home/node/.claude',
     readonly: false,
   });
+
+  // Mount shared images directory (for Discord/channel image attachments)
+  const imagesDir = path.join(DATA_DIR, 'images');
+  if (fs.existsSync(imagesDir)) {
+    mounts.push({
+      hostPath: imagesDir,
+      containerPath: '/workspace/images',
+      readonly: true,
+    });
+  }
 
   // Mount Google Workspace CLI credentials (read-only, shared across all groups)
   const homeDir = process.env.HOME || os.homedir();

@@ -34,6 +34,7 @@ interface ContainerInput {
   assistantName?: string;
   script?: string;
   model?: string;
+  images?: string[]; // Host paths rewritten to container paths (/workspace/images/...)
 }
 
 interface ContainerOutput {
@@ -78,6 +79,16 @@ class MessageStream {
     this.queue.push({
       type: 'user',
       message: { role: 'user', content: text },
+      parent_tool_use_id: null,
+      session_id: '',
+    });
+    this.waiting?.();
+  }
+
+  pushMultimodal(content: Array<{ type: string; [key: string]: any }>): void {
+    this.queue.push({
+      type: 'user',
+      message: { role: 'user', content: content as any },
       parent_tool_use_id: null,
       session_id: '',
     });
@@ -379,13 +390,55 @@ async function runQuery(
   containerInput: ContainerInput,
   sdkEnv: Record<string, string | undefined>,
   resumeAt?: string,
+  images?: string[],
 ): Promise<{
   newSessionId?: string;
   lastAssistantUuid?: string;
   closedDuringQuery: boolean;
 }> {
   const stream = new MessageStream();
-  stream.push(prompt);
+
+  // Build multimodal content if images are present
+  if (images && images.length > 0) {
+    const content: Array<{ type: string; [key: string]: any }> = [];
+    for (const imgPath of images) {
+      try {
+        // Rewrite host path to container path
+        const filename = path.basename(imgPath);
+        const containerPath = `/workspace/images/${filename}`;
+        if (fs.existsSync(containerPath)) {
+          const data = fs.readFileSync(containerPath);
+          const base64 = data.toString('base64');
+          const ext = path.extname(filename).slice(1).toLowerCase();
+          const mediaType =
+            ext === 'jpg' || ext === 'jpeg'
+              ? 'image/jpeg'
+              : ext === 'png'
+                ? 'image/png'
+                : ext === 'gif'
+                  ? 'image/gif'
+                  : ext === 'webp'
+                    ? 'image/webp'
+                    : 'image/png';
+          content.push({
+            type: 'image',
+            source: { type: 'base64', media_type: mediaType, data: base64 },
+          });
+          log(`Loaded image: ${containerPath} (${data.length} bytes)`);
+        } else {
+          log(`Image not found in container: ${containerPath}`);
+        }
+      } catch (err) {
+        log(
+          `Failed to load image ${imgPath}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    content.push({ type: 'text', text: prompt });
+    stream.pushMultimodal(content);
+  } else {
+    stream.push(prompt);
+  }
 
   // Poll IPC for follow-up messages and _close sentinel during the query
   let ipcPolling = true;
@@ -688,7 +741,10 @@ async function main(): Promise<void> {
         containerInput,
         sdkEnv,
         resumeAt,
+        containerInput.images,
       );
+      // Only pass images on the first query
+      containerInput.images = undefined;
       if (queryResult.newSessionId) {
         sessionId = queryResult.newSessionId;
       }
